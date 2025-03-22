@@ -35,14 +35,13 @@ layout = dbc.Container([
     ], className="mb-3"),
 
     dbc.Button("Registrar Compra", id="btn-comprar", color="primary", className="mb-3"),
-    html.Div(id="mensaje-compra", className="text-success mb-3"),
+    html.Div(id="mensaje-compra", className="mb-3"),
 
     html.Hr(),
 
     html.H4("Historial de Compras"),
     html.Div(id="tabla-compras")
 ])
-
 
 @callback(
     Output("dropdown-estudiante-tienda", "options"),
@@ -55,7 +54,6 @@ def cargar_estudiantes(_):
     rows = cursor.fetchall()
     conn.close()
     return [{"label": nombre, "value": id_} for id_, nombre in rows]
-
 
 @callback(
     Output("tabla-compras", "children"),
@@ -71,24 +69,8 @@ def actualizar_compras(estudiante_id, n_clicks, descripcion, puntos):
     if not estudiante_id:
         return "", "", ""
 
-    # Determinar qué disparó el callback
-    triggered_id = ctx.triggered_id if ctx.triggered_id else None
+    triggered_id = ctx.triggered_id
     mensaje = ""
-
-    # Si se presionó el botón de compra
-    if triggered_id == "btn-comprar":
-        if not descripcion or not puntos:
-            mensaje = "Debe ingresar descripción y puntos."
-        else:
-            conn = sqlite3.connect(DB_PATH)
-            cursor = conn.cursor()
-            cursor.execute(
-                "INSERT INTO compras (estudiante_id, descripcion, puntos_gastados) VALUES (?, ?, ?)",
-                (estudiante_id, descripcion.strip(), puntos)
-            )
-            conn.commit()
-            conn.close()
-            mensaje = f"Compra registrada: {descripcion} (-{puntos} pts)"
 
     # Obtener puntos ganados y gastados
     conn = sqlite3.connect(DB_PATH)
@@ -98,6 +80,29 @@ def actualizar_compras(estudiante_id, n_clicks, descripcion, puntos):
     cursor.execute("SELECT COALESCE(SUM(puntos_gastados), 0) FROM compras WHERE estudiante_id = ?", (estudiante_id,))
     gastados = cursor.fetchone()[0]
     disponibles = ganados - gastados
+
+    # Si se presionó el botón de compra
+    if triggered_id == "btn-comprar":
+        if not descripcion or not puntos:
+            mensaje = dbc.Alert("Debe ingresar descripción y puntos.", color="warning", dismissable=True)
+        elif puntos > disponibles:
+            mensaje = dbc.Alert(
+                f"No tiene suficientes puntos. Disponible: {disponibles}, requerido: {puntos}.",
+                color="danger",
+                dismissable=True
+            )
+        else:
+            cursor.execute(
+                "INSERT INTO compras (estudiante_id, descripcion, puntos_gastados) VALUES (?, ?, ?)",
+                (estudiante_id, descripcion.strip(), puntos)
+            )
+            conn.commit()
+            disponibles -= puntos  # actualizar total tras la compra
+            mensaje = dbc.Alert(
+                f"Compra registrada: {descripcion} (-{puntos} pts)",
+                color="success",
+                dismissable=True
+            )
 
     # Obtener historial de compras
     df = pd.read_sql_query(
