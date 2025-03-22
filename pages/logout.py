@@ -1,15 +1,22 @@
+# pages/logout.py
+
 import dash
 dash.register_page(__name__, path="/logout")
 
-from dash import html
+from dash import html, dcc, callback, Output, Input
 from flask import session
 
 layout = html.Div([
-    html.H3("Sesión cerrada. Redirigiendo al login...")
+    dcc.Location(id="url-logout", refresh=True),
+    html.H3("Cerrando sesión..."),
+    html.Div(id="logout-redirect")
 ])
 
-# Cerrar sesión al cargar la página
-def _logout_session():
+@callback(
+    Output("logout-redirect", "children"),
+    Input("url-logout", "pathname"),
+    prevent_initial_call=False
+)
+def logout_user(_):
     session.pop("user", None)
-
-_logout_session()
+    return dcc.Location(href="/login", id="redirect-login")

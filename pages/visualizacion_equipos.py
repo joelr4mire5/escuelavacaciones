@@ -21,7 +21,7 @@ layout = dbc.Container([
 @callback(
     Output("grafico-totales-equipos", "figure"),
     Output("grafico-por-actividad", "figure"),
-    Input("grafico-totales-equipos", "id")  # se activa al cargar
+    Input("grafico-totales-equipos", "id")
 )
 def actualizar_graficos(_):
     conn = sqlite3.connect(DB_PATH)
@@ -37,5 +37,27 @@ def actualizar_graficos(_):
     if df.empty:
         return px.bar(title="Sin datos disponibles"), px.bar(title="")
 
-    # Total por equipo
-    total_equ_
+    # ✅ Total por equipo (suma global)
+    total_equipo = df.groupby("equipo")["total_puntos"].sum().reset_index()
+    fig_equipo = px.bar(
+        total_equipo,
+        x="equipo",
+        y="total_puntos",
+        title="Puntaje Total por Equipo",
+        labels={"equipo": "Equipo", "total_puntos": "Puntos"},
+        text_auto=True
+    )
+
+    # ✅ Total por actividad y equipo
+    fig_actividad = px.bar(
+        df,
+        x="actividad",
+        y="total_puntos",
+        color="equipo",
+        barmode="group",
+        title="Puntos por Actividad y por Equipo",
+        labels={"actividad": "Actividad", "total_puntos": "Puntos"},
+        text_auto=True
+    )
+
+    return fig_equipo, fig_actividad
