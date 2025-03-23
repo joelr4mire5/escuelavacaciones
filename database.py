@@ -8,6 +8,7 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
 
+    # Tabla de estudiantes
     c.execute('''
         CREATE TABLE IF NOT EXISTS estudiantes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -17,17 +18,7 @@ def init_db():
         )
     ''')
 
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS puntajes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            estudiante_id INTEGER,
-            actividad TEXT,
-            puntos INTEGER,
-            fecha DATE DEFAULT (datetime('now')),
-            FOREIGN KEY(estudiante_id) REFERENCES estudiantes(id)
-        )
-    ''')
-
+    # Tabla de compras
     c.execute('''
         CREATE TABLE IF NOT EXISTS compras (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -39,6 +30,7 @@ def init_db():
         )
     ''')
 
+    # Tabla de citas (versículos/capítulos)
     c.execute('''
         CREATE TABLE IF NOT EXISTS citas (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -48,16 +40,46 @@ def init_db():
         )
     ''')
 
+    # Citas completadas por estudiantes
     c.execute('''
         CREATE TABLE IF NOT EXISTS citas_completadas (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
             estudiante_id INTEGER NOT NULL,
             cita_id INTEGER NOT NULL,
             completado INTEGER DEFAULT 1,
+            PRIMARY KEY (estudiante_id, cita_id),
             FOREIGN KEY(estudiante_id) REFERENCES estudiantes(id),
             FOREIGN KEY(cita_id) REFERENCES citas(id)
         )
     ''')
 
+    # Tabla de asistencia (1 fila por estudiante y día)
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS asistencia (
+            estudiante_id INTEGER,
+            dia INTEGER,
+            presente INTEGER DEFAULT 0,
+            puntual INTEGER DEFAULT 0,
+            puntaje_asistencia INTEGER DEFAULT 0,
+            puntaje_puntual INTEGER DEFAULT 0,
+            PRIMARY KEY(estudiante_id, dia),
+            FOREIGN KEY(estudiante_id) REFERENCES estudiantes(id)
+        )
+    ''')
+
+    # Tabla de visitas
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS visitas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT NOT NULL,
+            es_adulto INTEGER DEFAULT 0,
+            invitador_id INTEGER,
+            puntaje INTEGER DEFAULT 0,
+            FOREIGN KEY(invitador_id) REFERENCES estudiantes(id)
+        )
+    ''')
+
     conn.commit()
     conn.close()
+
+def get_connection():
+    return sqlite3.connect(DB_PATH)

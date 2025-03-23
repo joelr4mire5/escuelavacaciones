@@ -113,7 +113,7 @@ def mostrar_checkboxes_materiales(estudiante_id):
         dbc.Checkbox(
             id={"type": "completo", "estudiante": estudiante_id},
             value=completo,
-            label="Folder completo (los 4 días)",
+            label="Folder completo",
             className="mt-3"
         ),
         dbc.Button("Guardar Materiales", id="guardar-materiales", color="primary", className="mt-3"),
