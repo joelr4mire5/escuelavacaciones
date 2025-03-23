@@ -7,9 +7,8 @@ navbar = dbc.NavbarSimple(
     children=[
         dbc.NavItem(dcc.Link("Inicio", href="/", className="nav-link")),
         dbc.NavItem(dcc.Link("Registro Estudiantes", href="/registro-estudiantes", className="nav-link")),
-        dbc.NavItem(dcc.Link("Puntajes", href="/registro-puntajes", className="nav-link")),
-        dbc.NavItem(dcc.Link("Equipos", href="/visualizacion-equipos", className="nav-link")),
-        dbc.NavItem(dcc.Link("Estudiantes (Stats)", href="/visualizacion-estudiantes", className="nav-link")),
+        dbc.NavItem(dcc.Link("Registro de Puntajes", href="/registro-puntajes", className="nav-link")),
+        dbc.NavItem(dcc.Link("Analisis de datos", href="/analisis-datos", className="nav-link")),
         dbc.NavItem(dcc.Link("Tienda", href="/tienda", className="nav-link")),
         dbc.NavItem(dcc.Link("Agregar citas", href="/versiculos", className="nav-link")),
         dbc.NavItem(dcc.Link("Cerrar sesión", href="/logout", className="nav-link text-danger")),
