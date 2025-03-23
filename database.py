@@ -39,8 +39,25 @@ def init_db():
         )
     ''')
 
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS citas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tipo TEXT CHECK(tipo IN ('Versículo', 'Capítulo')),
+            cita TEXT NOT NULL,
+            puntaje INTEGER NOT NULL
+        )
+    ''')
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS citas_completadas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            estudiante_id INTEGER NOT NULL,
+            cita_id INTEGER NOT NULL,
+            completado INTEGER DEFAULT 1,
+            FOREIGN KEY(estudiante_id) REFERENCES estudiantes(id),
+            FOREIGN KEY(cita_id) REFERENCES citas(id)
+        )
+    ''')
+
     conn.commit()
     conn.close()
-
-def get_connection():
-    return sqlite3.connect(DB_PATH)

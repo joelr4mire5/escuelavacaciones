@@ -11,6 +11,7 @@ navbar = dbc.NavbarSimple(
         dbc.NavItem(dcc.Link("Equipos", href="/visualizacion-equipos", className="nav-link")),
         dbc.NavItem(dcc.Link("Estudiantes (Stats)", href="/visualizacion-estudiantes", className="nav-link")),
         dbc.NavItem(dcc.Link("Tienda", href="/tienda", className="nav-link")),
+        dbc.NavItem(dcc.Link("Agregar citas", href="/versiculos", className="nav-link")),
         dbc.NavItem(dcc.Link("Cerrar sesión", href="/logout", className="nav-link text-danger")),
     ],
     brand="Escuela Bíblica",
