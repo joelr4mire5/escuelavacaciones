@@ -1,0 +1,25 @@
+/* Estilo medieval para navbar */
+
+.medieval-navbar {
+    background-color: #4B2E2B !important;
+    border-bottom: 4px solid #D4AF37;
+    font-family: 'UnifrakturCook', cursive;
+}
+
+.medieval-title {
+    font-size: 1.6rem;
+    font-family: 'UnifrakturCook', cursive;
+    color: #FDF6E3;
+}
+
+.medieval-link {
+    font-family: 'UnifrakturCook', cursive;
+    color: #FDF6E3 !important;
+}
+
+.navbar-brand {
+    font-weight: bold;
+}
+
+/* Fuente decorativa gótica (UnifrakturCook) */
+@import url('https://fonts.googleapis.com/css2?family=UnifrakturCook:wght@700&display=swap');
