@@ -13,6 +13,6 @@ layout = dbc.Container([
 
     dbc.Row([
         dbc.Col(dbc.Button("Visualizaciones por Equipos", href="/visualizacion-equipo", color="primary", className="w-100 mb-2"), md=4),
-        dbc.Col(dbc.Button("Visualizaciones por Estudiante", href="/visualizacion-estudiante", color="success", className="w-100 mb-2"), md=4)
+        dbc.Col(dbc.Button("Visualizaciones por Estudiante", href="/visualizacion_estudiantes", color="success", className="w-100 mb-2"), md=4)
     ], className="mt-3")
 ])
