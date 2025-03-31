@@ -10,7 +10,7 @@ from dash.dependencies import ALL
 
 dash.register_page(__name__, path="/asistencia")
 
-DIAS = ["día 1", "día 2", "día 3", "día 4"]
+DIAS = ["Día 1", "Día 2", "Día 3", "Día 4","Día 5"]
 
 layout = dbc.Container([
     html.H2("Registro de Asistencia y Puntualidad", className="my-4"),
@@ -137,7 +137,7 @@ def guardar_asistencia(n, estudiante_id, lista_asistencia, lista_puntualidad, id
         estudiante_id = ids[i]["estudiante"]
         estado_puntualidad = lista_puntualidad[i]
 
-        for dia in range(4):
+        for dia in range(len(DIAS)):
             presente = dia in estado_asistencia
             puntual = dia in estado_puntualidad
 

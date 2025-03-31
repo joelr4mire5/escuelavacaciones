@@ -134,42 +134,62 @@ def manejar_compras(estudiante_id, n_comprar, editar_clicks, eliminar_clicks, de
         JOIN estudiantes e ON e.id = cc.estudiante_id;
     """)
 
-    df = pd.read_sql_query("SELECT SUM(puntaje) AS total FROM resumen_puntaje WHERE id = ?", conn, params=(estudiante_id,))
-    total_ganado = df["total"].iloc[0] if not df.empty and df["total"].iloc[0] else 0
+    def calcular_disponibles():
+        df = pd.read_sql_query("SELECT SUM(puntaje) AS total FROM resumen_puntaje WHERE id = ?", conn, params=(estudiante_id,))
+        total = df["total"].iloc[0] if not df.empty and df["total"].iloc[0] else 0
+        cursor.execute("SELECT COALESCE(SUM(puntos_gastados), 0) FROM compras WHERE estudiante_id = ?", (estudiante_id,))
+        gastado = cursor.fetchone()[0]
+        return total - gastado
 
-    cursor.execute("SELECT COALESCE(SUM(puntos_gastados), 0) FROM compras WHERE estudiante_id = ?", (estudiante_id,))
-    gastados = cursor.fetchone()[0]
-    disponibles = total_ganado - gastados
+    disponibles = calcular_disponibles()
 
     if isinstance(triggered_id, dict) and triggered_id["type"] == "btn-eliminar-compra":
         compra_id = triggered_id["index"]
         cursor.execute("DELETE FROM compras WHERE id = ?", (compra_id,))
         conn.commit()
+        nuevos_disponibles = calcular_disponibles()
         conn.close()
-        return manejar_compras(estudiante_id, None, None, None, "", None, None)
+        return (
+            mostrar_tabla_compras(estudiante_id),
+            dbc.Alert("Compra eliminada.", color="info"),
+            f"{nuevos_disponibles} puntos disponibles",
+            "", None, None, "Registrar"
+        )
 
     if isinstance(triggered_id, dict) and triggered_id["type"] == "btn-editar-compra":
         compra_id = triggered_id["index"]
         cursor.execute("SELECT descripcion, puntos_gastados FROM compras WHERE id = ?", (compra_id,))
         row = cursor.fetchone()
+        conn.close()
         return (
             mostrar_tabla_compras(estudiante_id),
             "",
             f"{disponibles} puntos disponibles",
-            row[0],
-            row[1],
-            compra_id,
-            "Actualizar"
+            row[0], row[1], compra_id, "Actualizar"
         )
 
     if triggered_id == "btn-comprar":
         if not descripcion or puntos is None:
+            mensaje = dbc.Alert("Complete todos los campos", color="warning")
+            nuevos_disponibles = calcular_disponibles()
             conn.close()
-            return mostrar_tabla_compras(estudiante_id), dbc.Alert("Complete todos los campos", color="warning"), f"{disponibles} puntos disponibles", descripcion, puntos, compra_id, "Registrar"
+            return (
+                mostrar_tabla_compras(estudiante_id),
+                mensaje,
+                f"{nuevos_disponibles} puntos disponibles",
+                descripcion, puntos, compra_id, "Registrar"
+            )
 
         if puntos > disponibles and not compra_id:
+            mensaje = dbc.Alert("Puntos insuficientes", color="danger")
+            nuevos_disponibles = calcular_disponibles()
             conn.close()
-            return mostrar_tabla_compras(estudiante_id), dbc.Alert("Puntos insuficientes", color="danger"), f"{disponibles} puntos disponibles", descripcion, puntos, compra_id, "Registrar"
+            return (
+                mostrar_tabla_compras(estudiante_id),
+                mensaje,
+                f"{nuevos_disponibles} puntos disponibles",
+                descripcion, puntos, compra_id, "Registrar"
+            )
 
         if compra_id:
             cursor.execute("UPDATE compras SET descripcion = ?, puntos_gastados = ? WHERE id = ?",
@@ -181,14 +201,25 @@ def manejar_compras(estudiante_id, n_comprar, editar_clicks, eliminar_clicks, de
             mensaje = dbc.Alert("Compra registrada correctamente.", color="success")
 
         conn.commit()
+        nuevos_disponibles = calcular_disponibles()
+        conn.close()
+        return (
+            mostrar_tabla_compras(estudiante_id),
+            mensaje,
+            f"{nuevos_disponibles} puntos disponibles",
+            "", None, None, "Registrar"
+        )
 
-    descuento = puntos if not compra_id and puntos is not None else 0
+    # 🔒 Return por defecto para evitar errores de tipo
     conn.close()
     return (
         mostrar_tabla_compras(estudiante_id),
         mensaje,
-        f"{disponibles - descuento} puntos disponibles",
-        "", None, None, "Registrar"
+        f"{disponibles} puntos disponibles",
+        descripcion,
+        puntos,
+        compra_id,
+        "Registrar"
     )
 
 def mostrar_tabla_compras(estudiante_id):
