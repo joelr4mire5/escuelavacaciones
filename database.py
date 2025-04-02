@@ -65,18 +65,45 @@ def init_db():
             FOREIGN KEY(estudiante_id) REFERENCES estudiantes(id)
         )
     ''')
-
     # Tabla de visitas
     c.execute('''
-        CREATE TABLE IF NOT EXISTS visitas (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nombre TEXT NOT NULL,
-            es_adulto INTEGER DEFAULT 0,
-            invitador_id INTEGER,
-            puntaje INTEGER DEFAULT 0,
-            FOREIGN KEY(invitador_id) REFERENCES estudiantes(id)
+          CREATE TABLE IF NOT EXISTS visitas (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              nombre TEXT NOT NULL,
+              es_adulto INTEGER DEFAULT 0,
+              invitador_id INTEGER,
+              puntaje INTEGER DEFAULT 0,
+              FOREIGN KEY(invitador_id) REFERENCES estudiantes(id)
+          )
+      ''')
+
+    c.execute('''
+          CREATE TABLE IF NOT EXISTS materiales (
+            estudiante_id INTEGER,
+            dia INTEGER,
+            biblia INTEGER DEFAULT 0,
+            folder INTEGER DEFAULT 0,
+            completo INTEGER DEFAULT 0,
+            puntos_biblia INTEGER DEFAULT 0,
+            puntos_folder INTEGER DEFAULT 0,
+            puntos_completo INTEGER DEFAULT 0,
+            PRIMARY KEY(estudiante_id, dia),
+            FOREIGN KEY(estudiante_id) REFERENCES estudiantes(id)
         )
-    ''')
+      ''')
+
+    c.execute('''
+              CREATE TABLE IF NOT EXISTS citas_completadas (
+            estudiante_id INTEGER NOT NULL,
+            cita_id INTEGER NOT NULL,
+            completado INTEGER DEFAULT 1,
+            PRIMARY KEY (estudiante_id, cita_id),
+            FOREIGN KEY(estudiante_id) REFERENCES estudiantes(id),
+            FOREIGN KEY(cita_id) REFERENCES citas(id)
+        )
+         ''')
+
+
 
     conn.commit()
     conn.close()

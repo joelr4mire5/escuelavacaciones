@@ -67,20 +67,6 @@ def mostrar_checkboxes_materiales(estudiante_id):
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS materiales (
-            estudiante_id INTEGER,
-            dia INTEGER,
-            biblia INTEGER DEFAULT 0,
-            folder INTEGER DEFAULT 0,
-            completo INTEGER DEFAULT 0,
-            puntos_biblia INTEGER DEFAULT 0,
-            puntos_folder INTEGER DEFAULT 0,
-            puntos_completo INTEGER DEFAULT 0,
-            PRIMARY KEY(estudiante_id, dia),
-            FOREIGN KEY(estudiante_id) REFERENCES estudiantes(id)
-        )
-    """)
     cursor.execute("SELECT dia, biblia, folder, completo FROM materiales WHERE estudiante_id = ?", (estudiante_id,))
     registros = cursor.fetchall()
     conn.close()

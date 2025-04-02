@@ -78,16 +78,6 @@ def mostrar_citas(estudiante_id, tipo):
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS citas_completadas (
-            estudiante_id INTEGER NOT NULL,
-            cita_id INTEGER NOT NULL,
-            completado INTEGER DEFAULT 1,
-            PRIMARY KEY (estudiante_id, cita_id),
-            FOREIGN KEY(estudiante_id) REFERENCES estudiantes(id),
-            FOREIGN KEY(cita_id) REFERENCES citas(id)
-        )
-    """)
 
     cursor.execute("SELECT id, cita, puntaje FROM citas WHERE tipo = ?", (tipo,))
     citas = cursor.fetchall()

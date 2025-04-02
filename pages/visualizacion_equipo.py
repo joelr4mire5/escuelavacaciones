@@ -33,6 +33,7 @@ layout = dbc.Container([
     dcc.Graph(id="grafico-puntaje-equipo")
 ])
 
+
 @callback(
     Output("grafico-puntaje-equipo", "figure"),
     Input("filtro-categoria", "value")
@@ -46,19 +47,25 @@ def actualizar_grafico(categoria):
                'Asistencia' AS categoria
         FROM asistencia a
         JOIN estudiantes e ON e.id = a.estudiante_id
+
         UNION ALL
+
         SELECT e.id, e.nombre, e.equipo,
                (m.puntos_biblia + m.puntos_folder + m.puntos_completo) AS puntaje,
                'Materiales' AS categoria
         FROM materiales m
         JOIN estudiantes e ON e.id = m.estudiante_id
+
         UNION ALL
+
         SELECT e.id, e.nombre, e.equipo,
                v.puntaje,
                'Visitas' AS categoria
         FROM visitas v
         JOIN estudiantes e ON e.id = v.invitador_id
+
         UNION ALL
+
         SELECT e.id, e.nombre, e.equipo,
                c.puntaje,
                'Memorización' AS categoria
@@ -73,6 +80,9 @@ def actualizar_grafico(categoria):
     except Exception as e:
         conn.close()
         return px.bar(title=f"Error al cargar datos: {e}")
+
+    if df.empty:
+        return px.bar(title="No hay datos disponibles para visualizar.")
 
     if categoria != "Todas":
         df = df[df["categoria"] == categoria]
