@@ -12,7 +12,8 @@ USERS = {
     "mary": "mesablanca3",
     "andrey": "fuegonoche6",
     "karina": "tazamiel99",
-    "joel": "dataanalyst"
+    "joel": "dataanalyst",
+    "estefany":"mesablanca4"
 }
 
 def validate_login(username, password):
