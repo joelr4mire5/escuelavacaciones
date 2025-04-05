@@ -98,10 +98,14 @@ def mostrar_informe(tipo):
 
     df = pd.read_sql_query("SELECT * FROM resumen_puntaje", conn)
 
+
     if tipo == "visitas":
         df_f = df[df["categoria"] == "Visitas"]
+
     elif tipo == "memoria":
         df_f = df[df["categoria"] == "Memoria"]
+
+
     else:  # total
         df_f = df.groupby(["id", "nombre", "edad"], as_index=False)["puntaje"].sum()
 
@@ -111,6 +115,7 @@ def mostrar_informe(tipo):
 
     for clase, (min_edad, max_edad) in EDAD_CLASES.items():
         df_clase = df_f[(df_f["edad"] >= min_edad) & (df_f["edad"] <= max_edad)]
+        df_clase = df_clase.groupby(["id", "nombre", "edad"], as_index=False).sum()
         top3 = df_clase.sort_values("puntaje", ascending=False).head(3)
         if not top3.empty:
             resultados.append(html.H5(f"Clase {clase}"))
