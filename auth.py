@@ -1,6 +1,8 @@
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from psycopg2.errors import UniqueViolation
 from werkzeug.security import check_password_hash, generate_password_hash
+
 
 # URL de conexión a tu base de datos en Heroku
 DATABASE_URL = "postgres://uehj6l5ro2do7e:pec2874786543ef60ab195635730a2b11bd85022c850ca40f1cda985eef6374fd@c952v5ogavqpah.cluster-czrs8kj4isg7.us-east-1.rds.amazonaws.com:5432/d8bh6a744djnub"  # Reemplaza esto con tu URL real
@@ -28,21 +30,27 @@ def validate_login(username, password):
 
 
 def add_user(username, password):
-    """Agrega un nuevo usuario con la contraseña hasheada."""
+    """Agrega un nuevo usuario con la contraseña protegida, manejando errores en caso de duplicados."""
     conn = get_connection()
     try:
         with conn.cursor() as cur:
             hashed_password = generate_password_hash(password)
+
+            # Intentar agregar el usuario
             cur.execute(
                 "INSERT INTO users (username, password) VALUES (%s, %s)",
                 (username, hashed_password)
             )
             conn.commit()
-            print("Usuario agregado con éxito.")
+            print(f"Usuario '{username}' agregado con éxito.")
+    except UniqueViolation:
+        print(f"Error: El usuario '{username}' ya existe.")
     except psycopg2.Error as e:
-        print(f"Error al agregar usuario: {e}")
+        # Ocurrió otro error
+        print(f"Error inesperado al agregar el usuario: {e}")
     finally:
         conn.close()
+
 
 # Lista de usuarios existentes
 users = {
