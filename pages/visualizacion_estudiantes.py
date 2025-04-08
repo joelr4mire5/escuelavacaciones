@@ -5,7 +5,7 @@ from dash import html, dcc, Input, Output, State, ctx, callback
 import dash_bootstrap_components as dbc
 from dash.dependencies import ALL
 
-dash.register_page(__name__, path="/asistencia")
+dash.register_page(__name__, path="/isualizacion-estudiantes")
 
 DIAS = ["Día 1", "Día 2", "Día 3", "Día 4", "Día 5"]
 
