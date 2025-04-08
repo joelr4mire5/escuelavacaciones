@@ -20,7 +20,8 @@ app = dash.Dash(
     server=server,
     use_pages=True,
     suppress_callback_exceptions=True,
-    external_stylesheets=[dbc.themes.BOOTSTRAP]
+    external_stylesheets=[dbc.themes.BOOTSTRAP],
+    debug=True
 )
 
 # Layout principal
