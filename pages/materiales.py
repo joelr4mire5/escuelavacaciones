@@ -7,7 +7,7 @@ from dash.dependencies import ALL
 import os  # Para acceder a DATABASE_URL
 
 # Obtener la URL de conexión desde las variables de entorno de Heroku
-DATABASE_URL = os.getenv("postgres://uehj6l5ro2do7e:pec2874786543ef60ab195635730a2b11bd85022c850ca40f1cda985eef6374fd@c952v5ogavqpah.cluster-czrs8kj4isg7.us-east-1.rds.amazonaws.com:5432/d8bh6a744djnub")
+DATABASE_URL = "postgres://uehj6l5ro2do7e:pec2874786543ef60ab195635730a2b11bd85022c850ca40f1cda985eef6374fd@c952v5ogavqpah.cluster-czrs8kj4isg7.us-east-1.rds.amazonaws.com:5432/d8bh6a744djnub"
 
 dash.register_page(__name__, path="/materiales")
 
