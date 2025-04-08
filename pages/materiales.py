@@ -124,7 +124,6 @@ def mostrar_checkboxes_materiales(estudiante_id):
         html.Div(id="mensaje-materiales", className="text-success mt-2")
     ])
 
-
 @callback(
     Output("mensaje-materiales", "children"),
     Output("resumen-materiales", "children"),
@@ -137,23 +136,30 @@ def mostrar_checkboxes_materiales(estudiante_id):
     prevent_initial_call=True
 )
 def guardar_materiales(n, estudiante_id, biblia_val, folder_val, completo_val, ids):
+    if not estudiante_id:
+        return "Seleccione un estudiante antes de guardar.", dash.no_update
+
     conn = get_connection()
     try:
         with conn.cursor() as cursor:
+            # Loop over each individual student checkbox data
             for i, biblia_dias in enumerate(biblia_val):
                 folder_dias = folder_val[i]
-                completo = completo_val[i]
+                completo = int(completo_val[i])  # Explicitly cast boolean to integer (1 for True, 0 for False)
                 estudiante = ids[i]["estudiante"]
 
+                # Loop over days for the student's material entries
                 for dia in range(len(DIAS)):
-                    tiene_biblia = dia in biblia_dias
-                    tiene_folder = dia in folder_dias
+                    # Determine if the student brought the Bible and/or folder for the current day
+                    tiene_biblia = int(dia in biblia_dias)  # 1 if dia is in biblia_dias, else 0
+                    tiene_folder = int(dia in folder_dias)  # 1 if dia is in folder_dias, else 0
 
+                    # Calculate points
                     puntos_biblia = 5 if tiene_biblia else 0
                     puntos_folder = 1 if tiene_folder else 0
                     puntos_completo = 2 if completo and all(d in folder_dias for d in range(len(DIAS))) else 0
 
-                    # Actualización o inserción con PostgreSQL
+                    # Execute SQL query to insert or update the materials record
                     cursor.execute("""
                         INSERT INTO materiales (estudiante_id, dia, biblia, folder, completo, puntos_biblia, puntos_folder, puntos_completo)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
@@ -165,12 +171,14 @@ def guardar_materiales(n, estudiante_id, biblia_val, folder_val, completo_val, i
                             puntos_folder = EXCLUDED.puntos_folder,
                             puntos_completo = EXCLUDED.puntos_completo
                     """, (
-                        estudiante, dia, tiene_biblia, tiene_folder, completo, puntos_biblia, puntos_folder,
-                        puntos_completo
+                        estudiante, dia, tiene_biblia, tiene_folder, completo,
+                        puntos_biblia, puntos_folder, puntos_completo
                     ))
 
+            # Commit changes to save data
             conn.commit()
 
+            # Generate material summary
             cursor.execute("""
                 SELECT SUM(puntos_biblia), SUM(puntos_folder), SUM(puntos_completo)
                 FROM materiales
@@ -180,6 +188,7 @@ def guardar_materiales(n, estudiante_id, biblia_val, folder_val, completo_val, i
     finally:
         conn.close()
 
+    # Construct a table to display to the user
     tabla = dbc.Table([
         html.Thead(html.Tr([
             html.Th("Biblia"), html.Th("Folder"), html.Th("Folder Completo")

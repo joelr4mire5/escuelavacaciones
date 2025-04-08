@@ -27,47 +27,49 @@ def validate_login(username, password):
             return False
     finally:
         conn.close()
-
-
-def add_user(username, password):
-    """Agrega un nuevo usuario con la contraseña protegida, manejando errores en caso de duplicados."""
-    conn = get_connection()
-    try:
-        with conn.cursor() as cur:
-            hashed_password = generate_password_hash(password)
-
-            # Intentar agregar el usuario
-            cur.execute(
-                "INSERT INTO users (username, password) VALUES (%s, %s)",
-                (username, hashed_password)
-            )
-            conn.commit()
-            print(f"Usuario '{username}' agregado con éxito.")
-    except UniqueViolation:
-        print(f"Error: El usuario '{username}' ya existe.")
-    except psycopg2.Error as e:
-        # Ocurrió otro error
-        print(f"Error inesperado al agregar el usuario: {e}")
-    finally:
-        conn.close()
-
-
-# Lista de usuarios existentes
-users = {
-    "sofia": "luna123sol",
-    "meme": "gatorojo45",
-    "elizabeth": "panazul88",
-    "yamileth": "casaverde7",
-    "ana": "nube123flor",
-    "danieska": "perrocafe22",
-    "missy": "solrio89",
-    "mary": "mesablanca3",
-    "andrey": "fuegonoche6",
-    "karina": "tazamiel99",
-    "joel": "dataanalyst",
-    "estefany": "mesablanca4"
-}
-
-# Agrega cada usuario con su contraseña
-for username, password in users.items():
-    add_user(username, password)
+#
+# def create_user_if_not_exists(username, password):
+#     try:
+#         conn = psycopg2.connect(DATABASE_URL, sslmode="require")
+#         cur = conn.cursor()
+#
+#         # Check if the user already exists
+#         cur.execute("SELECT COUNT(*) FROM users WHERE username = %s;", (username,))
+#         user_exists = cur.fetchone()[0] > 0
+#
+#         if not user_exists:
+#             cur.execute("INSERT INTO users (username, password) VALUES (%s, %s);", (username, password))
+#             print(f"User '{username}' created successfully.")
+#         else:
+#             print(f"User '{username}' already exists.")
+#
+#         conn.commit()
+#         cur.close()
+#         conn.close()
+#
+#     except psycopg2.Error as e:
+#         print(f"Database error: {e}")
+#     except Exception as e:
+#         print(f"An error occurred: {e}")
+#
+#
+#
+# # List of users with their passwords
+# users = {
+#     "sofia": "luna123sol",
+#     "meme": "gatorojo45",
+#     "elizabeth": "panazul88",
+#     "yamileth": "casaverde7",
+#     "ana": "nube123flor",
+#     "danieska": "perrocafe22",
+#     "missy": "solrio89",
+#     "mary": "mesablanca3",
+#     "andrey": "fuegonoche6",
+#     "karina": "tazamiel99",
+#     "joel": "dataanalyst",
+#     "estefany": "mesablanca4"
+# }
+#
+# # Create all users in the list
+# for username, password in users.items():
+#     create_user_if_not_exists(username, password)

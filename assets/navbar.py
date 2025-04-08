@@ -11,7 +11,7 @@ navbar = dbc.Navbar(
 
         dbc.Nav([
             dbc.NavItem(dcc.Link("🏰 Inicio", href="/", className="nav-link medieval-link")),
-            dbc.NavItem(dcc.Link("📜 Registro Estudiantes", href="/registro-estudiantes", className="nav-link medieval-link")),
+            dbc.NavItem(dcc.Link("📜 Registro Estudiantes", href="/registro_estudiantes", className="nav-link medieval-link")),
             dbc.NavItem(dcc.Link("📖 Registro de Puntajes", href="/registro-puntajes", className="nav-link medieval-link")),
             dbc.NavItem(dcc.Link("🔍 Análisis de Datos", href="/analisis-datos", className="nav-link medieval-link")),
             dbc.NavItem(dcc.Link("🛒 Tienda", href="/tienda", className="nav-link medieval-link")),

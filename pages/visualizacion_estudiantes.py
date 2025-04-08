@@ -1,13 +1,12 @@
-import dash
+
 import psycopg2  # PostgreSQL library
-import datetime
-from dash import html, dcc, Input, Output, State, ctx, callback
+import dash
+import pandas as pd
+from dash import html, dcc, callback, Input, Output, State
 import dash_bootstrap_components as dbc
-from dash.dependencies import ALL
+from dash.exceptions import PreventUpdate
+dash.register_page(__name__, path="/visualizacion-estudiantes")
 
-dash.register_page(__name__, path="/isualizacion-estudiantes")
-
-DIAS = ["Día 1", "Día 2", "Día 3", "Día 4", "Día 5"]
 
 # Connection URL for Heroku PostgreSQL
 DATABASE_URL = "postgres://uehj6l5ro2do7e:pec2874786543ef60ab195635730a2b11bd85022c850ca40f1cda985eef6374fd@c952v5ogavqpah.cluster-czrs8kj4isg7.us-east-1.rds.amazonaws.com:5432/d8bh6a744djnub"
@@ -17,179 +16,182 @@ DATABASE_URL = "postgres://uehj6l5ro2do7e:pec2874786543ef60ab195635730a2b11bd850
 def get_db_connection():
     return psycopg2.connect(DATABASE_URL, sslmode='require')
 
-
 layout = dbc.Container([
-    html.H2("Registro de Asistencia y Puntualidad", className="my-4"),
+    html.H2("Informes y Ranking", className="my-4"),
 
     dbc.Row([
         dbc.Col([
-            dbc.Label("Equipo"),
-            dcc.Dropdown(id="equipo-filtro", placeholder="Seleccione un equipo")
-        ], md=6),
+            dbc.Label("Seleccione Informe"),
+            dcc.Dropdown(
+                id="dropdown-informe",
+                options=[
+                    {"label": "Asistencia Perfecta", "value": "asistencia"},
+                    {"label": "Top 3 por Clase - Visitas", "value": "visitas"},
+                    {"label": "Top 3 por Clase - Memorización", "value": "memoria"},
+                    {"label": "Top 3 por Clase - Puntaje Total", "value": "total"},
+                ],
+                placeholder="Seleccione una opción"
+            )
+        ]),
         dbc.Col([
-            dbc.Label("Estudiante"),
-            dcc.Dropdown(id="estudiante-filtro", placeholder="Seleccione un estudiante")
-        ], md=6),
-    ], className="mb-4"),
+            dbc.Button("Exportar a Excel", id="btn-exportar", color="primary", className="mt-4")
+        ])
+    ]),
 
-    html.Div(id="lista-asistencia"),
     html.Hr(),
-    html.Div(id="tabla-resumen-asistencia")
+    html.Div(id="tabla-informe"),
+    dcc.Download(id="download-informe")
 ])
 
+EDAD_CLASES = {
+    "0-3": (0, 3),
+    "4-5": (4, 5),
+    "6-8": (6, 8),
+    "9-11": (9, 11),
+    "12+": (12, 99)
+}
 
 @callback(
-    Output("equipo-filtro", "options"),
-    Input("equipo-filtro", "id")
+    Output("tabla-informe", "children"),
+    Input("dropdown-informe", "value")
 )
-def cargar_equipos(_):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute("SELECT DISTINCT equipo FROM estudiantes ORDER BY equipo")
-        equipos = cursor.fetchall()
-        return [{"label": e[0], "value": e[0]} for e in equipos]
-    finally:
-        conn.close()
-
-
-@callback(
-    Output("estudiante-filtro", "options"),
-    Input("equipo-filtro", "value")
-)
-def cargar_estudiantes_por_equipo(equipo):
-    if not equipo:
-        return []
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute("SELECT id, nombre FROM estudiantes WHERE equipo = %s ORDER BY nombre", (equipo,))
-        estudiantes = cursor.fetchall()
-        return [{"label": nombre, "value": id_} for id_, nombre in estudiantes]
-    finally:
-        conn.close()
-
-
-@callback(
-    Output("lista-asistencia", "children"),
-    Input("estudiante-filtro", "value")
-)
-def mostrar_asistencia_estudiante(estudiante_id):
-    if not estudiante_id:
-        return html.P("Seleccione un estudiante para registrar asistencia.")
+def mostrar_informe(tipo):
+    if not tipo:
+        raise PreventUpdate
 
     conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute("SELECT nombre FROM estudiantes WHERE id = %s", (estudiante_id,))
-        nombre = cursor.fetchone()[0]
+    df_est = pd.read_sql_query("SELECT id, nombre, edad FROM estudiantes", conn)
 
-        cursor.execute("SELECT dia, presente, puntual FROM asistencia WHERE estudiante_id = %s", (estudiante_id,))
-        registros = cursor.fetchall()
-
-        dias_asistencia = [r[0] for r in registros if r[1] == 1]
-        dias_puntualidad = [r[0] for r in registros if r[2] == 1]
-
-        return html.Div([
-            html.H5(nombre),
-            dbc.Row([
-                dbc.Col([
-                    html.Label("Asistencia"),
-                    dcc.Checklist(
-                        id={"type": "asistencia", "estudiante": estudiante_id},
-                        options=[{"label": d, "value": i} for i, d in enumerate(DIAS)],
-                        value=dias_asistencia,
-                        inline=True
-                    )
-                ], md=6),
-                dbc.Col([
-                    html.Label("Puntualidad"),
-                    dcc.Checklist(
-                        id={"type": "puntualidad", "estudiante": estudiante_id},
-                        options=[{"label": d, "value": i} for i, d in enumerate(DIAS)],
-                        value=dias_puntualidad,
-                        inline=True
-                    )
-                ], md=6)
-            ]),
-            html.Hr(),
-            dbc.Button("Guardar Asistencia", id="guardar-asistencia", color="primary", className="mt-3"),
-            html.Div(id="mensaje-asistencia", className="text-success mt-2")
-        ])
-    finally:
+    if tipo == "asistencia":
+        df = pd.read_sql_query("""
+            SELECT e.nombre, e.edad,
+                   SUM(a.presente) AS total_presente,
+                   SUM(a.puntual) AS total_puntual
+            FROM asistencia a
+            JOIN estudiantes e ON e.id = a.estudiante_id
+            GROUP BY a.estudiante_id
+            HAVING total_presente = 5 AND total_puntual = 5
+        """, conn)
         conn.close()
+        return dbc.Table.from_dataframe(df[["nombre", "edad","total_presente","total_puntual"]], striped=True, bordered=True, hover=True)
 
+    # Crear vista unificada
+    conn.executescript("""
+        CREATE TEMP VIEW IF NOT EXISTS resumen_puntaje AS
+        SELECT e.id, e.nombre, e.edad,
+               v.puntaje,
+               'Visitas' AS categoria
+        FROM visitas v
+        JOIN estudiantes e ON e.id = v.invitador_id
+        UNION ALL
+        SELECT e.id, e.nombre, e.edad,
+               c.puntaje,
+               'Memoria' AS categoria
+        FROM citas_completadas cc
+        JOIN citas c ON c.id = cc.cita_id
+        JOIN estudiantes e ON e.id = cc.estudiante_id
+        UNION ALL
+        SELECT e.id, e.nombre, e.edad,
+               (a.puntaje_asistencia + a.puntaje_puntual) AS puntaje,
+               'Asistencia' AS categoria
+        FROM asistencia a
+        JOIN estudiantes e ON e.id = a.estudiante_id
+        UNION ALL
+        SELECT e.id, e.nombre, e.edad,
+               (m.puntos_biblia + m.puntos_folder + m.puntos_completo) AS puntaje,
+               'Materiales' AS categoria
+        FROM materiales m
+        JOIN estudiantes e ON e.id = m.estudiante_id;
+    """)
+
+    df = pd.read_sql_query("SELECT * FROM resumen_puntaje", conn)
+
+
+    if tipo == "visitas":
+        df_f = df[df["categoria"] == "Visitas"]
+
+    elif tipo == "memoria":
+        df_f = df[df["categoria"] == "Memoria"]
+
+
+    else:  # total
+        df_f = df.groupby(["id", "nombre", "edad"], as_index=False)["puntaje"].sum()
+
+    conn.close()
+
+    resultados = []
+
+    for clase, (min_edad, max_edad) in EDAD_CLASES.items():
+        df_clase = df_f[(df_f["edad"] >= min_edad) & (df_f["edad"] <= max_edad)]
+        df_clase = df_clase.groupby(["id", "nombre", "edad"], as_index=False).sum()
+        top3 = df_clase.sort_values("puntaje", ascending=False).head(3)
+        if not top3.empty:
+            resultados.append(html.H5(f"Clase {clase}"))
+            resultados.append(dbc.Table.from_dataframe(top3[["nombre", "edad", "puntaje"]], striped=True, bordered=True, hover=True))
+
+    return html.Div(resultados)
 
 @callback(
-    Output("mensaje-asistencia", "children"),
-    Output("tabla-resumen-asistencia", "children"),
-    Input("guardar-asistencia", "n_clicks"),
-    State("estudiante-filtro", "value"),
-    State({"type": "asistencia", "estudiante": ALL}, "value"),
-    State({"type": "puntualidad", "estudiante": ALL}, "value"),
-    State({"type": "asistencia", "estudiante": ALL}, "id"),
+    Output("download-informe", "data"),
+    Input("btn-exportar", "n_clicks"),
+    State("dropdown-informe", "value"),
     prevent_initial_call=True
 )
-def guardar_asistencia(n, estudiante_id, lista_asistencia, lista_puntualidad, ids):
+def exportar_excel(n, tipo):
+    if not tipo:
+        raise PreventUpdate
+
     conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
-        # Create asistencia table if it does not exist
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS asistencia (
-                estudiante_id INTEGER,
-                dia INTEGER,
-                presente INTEGER DEFAULT 0,
-                puntual INTEGER DEFAULT 0,
-                puntaje_asistencia INTEGER DEFAULT 0,
-                puntaje_puntual INTEGER DEFAULT 0,
-                PRIMARY KEY(estudiante_id, dia)
-            )
+    if tipo == "asistencia":
+        df = pd.read_sql_query("""
+            SELECT e.nombre, e.edad,
+                   SUM(a.presente) AS total_presente,
+                   SUM(a.puntual) AS total_puntual
+            FROM asistencia a
+            JOIN estudiantes e ON e.id = a.estudiante_id
+            GROUP BY a.estudiante_id
+            HAVING total_presente = 5 AND total_puntual = 5
+        """, conn)
+        df = df[["nombre", "edad","total_presente","total_puntual"]]
+        filename = "asistencia_perfecta.xlsx"
+    else:
+        conn.executescript("""
+            CREATE TEMP VIEW IF NOT EXISTS resumen_puntaje AS
+            SELECT e.id, e.nombre, e.edad,
+                   v.puntaje,
+                   'Visitas' AS categoria
+            FROM visitas v
+            JOIN estudiantes e ON e.id = v.invitador_id
+            UNION ALL
+            SELECT e.id, e.nombre, e.edad,
+                   c.puntaje,
+                   'Memoria' AS categoria
+            FROM citas_completadas cc
+            JOIN citas c ON c.id = cc.cita_id
+            JOIN estudiantes e ON e.id = cc.estudiante_id
+            UNION ALL
+            SELECT e.id, e.nombre, e.edad,
+                   (a.puntaje_asistencia + a.puntaje_puntual) AS puntaje,
+                   'Asistencia' AS categoria
+            FROM asistencia a
+            JOIN estudiantes e ON e.id = a.estudiante_id
+            UNION ALL
+            SELECT e.id, e.nombre, e.edad,
+                   (m.puntos_biblia + m.puntos_folder + m.puntos_completo) AS puntaje,
+                   'Materiales' AS categoria
+            FROM materiales m
+            JOIN estudiantes e ON e.id = m.estudiante_id;
         """)
+        df = pd.read_sql_query("SELECT * FROM resumen_puntaje", conn)
+        if tipo == "visitas":
+            df = df[df["categoria"] == "Visitas"]
+            filename = "top3_visitas.xlsx"
+        elif tipo == "memoria":
+            df = df[df["categoria"] == "Memoria"]
+            filename = "top3_memoria.xlsx"
+        else:
+            df = df.groupby(["id", "nombre", "edad"], as_index=False)["puntaje"].sum()
+            filename = "top3_total.xlsx"
 
-        for i, estado_asistencia in enumerate(lista_asistencia):
-            estudiante_id = ids[i]["estudiante"]
-            estado_puntualidad = lista_puntualidad[i]
-
-            for dia in range(len(DIAS)):
-                presente = dia in estado_asistencia
-                puntual = dia in estado_puntualidad
-
-                if puntual and not presente:
-                    return f"Error: No se puede marcar puntualidad en {DIAS[dia]} sin asistencia."
-
-                cursor.execute("""
-                    INSERT INTO asistencia (estudiante_id, dia, presente, puntual, puntaje_asistencia, puntaje_puntual)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (estudiante_id, dia) DO UPDATE SET
-                        presente = EXCLUDED.presente,
-                        puntual = EXCLUDED.puntual,
-                        puntaje_asistencia = EXCLUDED.puntaje_asistencia,
-                        puntaje_puntual = EXCLUDED.puntaje_puntual
-                """, (
-                    estudiante_id,
-                    dia,
-                    int(presente),
-                    int(puntual),
-                    2 if presente else 0,
-                    2 if puntual else 0
-                ))
-
-        conn.commit()
-        cursor.execute("""
-            SELECT SUM(puntaje_asistencia), SUM(puntaje_puntual)
-            FROM asistencia
-            WHERE estudiante_id = %s
-        """, (estudiante_id,))
-        resumen = cursor.fetchone()
-
-        tabla = dbc.Table([
-            html.Thead(html.Tr([html.Th("Total Asistencia"), html.Th("Total Puntualidad")])),
-            html.Tbody([
-                html.Tr([html.Td(resumen[0] or 0), html.Td(resumen[1] or 0)])
-            ])
-        ], bordered=True, hover=True, responsive=True)
-
-        return "Datos guardados correctamente.", tabla
-    finally:
-        conn.close()
+    conn.close()
+    return dcc.send_data_frame(df.to_excel, filename, index=False)

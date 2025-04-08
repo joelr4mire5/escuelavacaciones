@@ -1,9 +1,11 @@
 import dash
 import psycopg2  # PostgreSQL library for database interaction
-from dash import html, dcc, Input, Output, State, callback
+from dash import html, dcc, Input, Output, State,ctx,callback
 import dash_bootstrap_components as dbc
 
 dash.register_page(__name__, path="/registro_estudiantes")
+EQUIPOS = ["Amarillo", "Azul", "Verde", "Rojo"]
+
 
 # Connection URL for Heroku PostgreSQL
 DATABASE_URL = "postgres://uehj6l5ro2do7e:pec2874786543ef60ab195635730a2b11bd85022c850ca40f1cda985eef6374fd@c952v5ogavqpah.cluster-czrs8kj4isg7.us-east-1.rds.amazonaws.com:5432/d8bh6a744djnub"
@@ -11,24 +13,49 @@ DATABASE_URL = "postgres://uehj6l5ro2do7e:pec2874786543ef60ab195635730a2b11bd850
 layout = dbc.Container([
     html.H2("Registro de Estudiantes", className="my-4"),
 
+    dcc.Store(id="selected-estudiante-id", storage_type="session"),
+
     dbc.Row([
         dbc.Col([
-            dbc.Label("Nombre del estudiante"),
-            dbc.Input(id="nombre-estudiante", placeholder="Ingrese el nombre del estudiante")
-        ], md=6),
+            dbc.Label("Nombre del Estudiante"),
+            dbc.Input(id="input-nombre", type="text", placeholder="Ingrese el nombre"),
+        ]),
+        dbc.Col([
+            dbc.Label("Edad"),
+            dbc.Input(id="input-edad", type="number", min=1, placeholder="Edad"),
+        ]),
         dbc.Col([
             dbc.Label("Equipo"),
-            dbc.Input(id="equipo-estudiante", placeholder="Ingrese el equipo del estudiante")
-        ], md=6)
-    ], className="mb-4"),
+            dcc.Dropdown(
+                id="input-equipo",
+                options=[{"label": eq, "value": eq} for eq in EQUIPOS],
+                placeholder="Seleccione un equipo"
+            )
+        ])
+    ], className="mb-3"),
 
-    dbc.Button("Registrar", id="btn-registrar", color="primary", className="mt-3"),
-
-    html.Div(id="mensaje-registro", className="text-success mt-3"),
+    dbc.Button("Registrar", id="btn-registrar", color="primary", className="mb-3"),
+    html.Div(id="registro-msg", className="text-success mb-3"),
 
     html.Hr(),
 
-    html.Div(id="tabla-estudiantes", className="mt-4")
+    html.H4("Buscar y Filtrar Estudiantes", className="mt-3"),
+    dbc.Row([
+        dbc.Col([
+            dbc.Label("Buscar por nombre"),
+            dbc.Input(id="filtro-nombre", placeholder="Ej. Juan", type="text")
+        ], md=6),
+        dbc.Col([
+            dbc.Label("Filtrar por equipo"),
+            dcc.Dropdown(
+                id="filtro-equipo",
+                options=[{"label": eq, "value": eq} for eq in EQUIPOS],
+                placeholder="Todos los equipos"
+            )
+        ], md=6)
+    ], className="mb-3"),
+
+    html.Div(id="lista-estudiantes")
 ])
 
 
@@ -37,80 +64,113 @@ def get_db_connection():
     """Establishes a connection to the PostgreSQL database."""
     return psycopg2.connect(DATABASE_URL, sslmode='require')
 
-
-@callback(
-    Output("mensaje-registro", "children"),
-    Output("tabla-estudiantes", "children"),
+# Callback único para manejar registro, edición, eliminación y filtros
+@dash.callback(
+    Output("registro-msg", "children"),
+    Output("lista-estudiantes", "children"),
+    Output("input-nombre", "value"),
+    Output("input-edad", "value"),
+    Output("input-equipo", "value"),
+    Output("selected-estudiante-id", "data"),
+    Output("btn-registrar", "children"),
     Input("btn-registrar", "n_clicks"),
-    State("nombre-estudiante", "value"),
-    State("equipo-estudiante", "value"),
+    Input({"type": "btn-eliminar", "index": dash.ALL}, "n_clicks"),
+    Input({"type": "btn-editar", "index": dash.ALL}, "n_clicks"),
+    Input("filtro-nombre", "value"),
+    Input("filtro-equipo", "value"),
+    State("input-nombre", "value"),
+    State("input-edad", "value"),
+    State("input-equipo", "value"),
+    State("selected-estudiante-id", "data"),
     prevent_initial_call=True
 )
-def registrar_estudiante(n, nombre, equipo):
-    """Registers a new student in the database."""
-    if not nombre or not equipo:
-        return "Por favor, ingrese toda la información requerida.", None
 
+
+def manejar_estudiantes(n_registrar, eliminar_clicks, editar_clicks, filtro_nombre, filtro_equipo,
+                        nombre, edad, equipo, estudiante_id):
+    triggered_id = ctx.triggered_id
     conn = get_db_connection()
     cursor = conn.cursor()
+    mensaje = ""
+    modo = "Registrar"
 
-    try:
-        # Insert new student into the database
-        cursor.execute("""
-            INSERT INTO estudiantes (nombre, equipo)
-            VALUES (%s, %s)
-        """, (nombre, equipo))
+    # --- Eliminar ---
+    if isinstance(triggered_id, dict) and triggered_id.get("type") == "btn-eliminar":
+        estudiante_id = triggered_id["index"]
+        cursor.execute("DELETE FROM estudiantes WHERE id = %s", (estudiante_id,))
         conn.commit()
-
-        # Fetch the updated list of students
-        cursor.execute("SELECT id, nombre, equipo FROM estudiantes ORDER BY nombre")
-        estudiantes = cursor.fetchall()
-
-        # Build the students' table
-        tabla = dbc.Table([
-            html.Thead(html.Tr([html.Th("ID"), html.Th("Nombre"), html.Th("Equipo")])),
-            html.Tbody([
-                html.Tr([html.Td(e[0]), html.Td(e[1]), html.Td(e[2])]) for e in estudiantes
-            ])
-        ], bordered=True, hover=True, responsive=True)
-
-        return "Estudiante registrado correctamente.", tabla
-
-    except psycopg2.Error as e:
-        return f"Error al registrar al estudiante: {str(e)}", None
-
-    finally:
-        # Always close the database connection
         conn.close()
+        return "Estudiante eliminado correctamente.", mostrar_estudiantes(filtro_nombre, filtro_equipo), "", None, None, None, modo
 
+    # --- Editar: cargar datos al formulario ---
+    if isinstance(triggered_id, dict) and triggered_id.get("type") == "btn-editar":
+        estudiante_id = triggered_id["index"]
+        cursor.execute("SELECT nombre, edad, equipo FROM estudiantes WHERE id = %s", (estudiante_id,))
+        row = cursor.fetchone()
+        conn.close()
+        return "", mostrar_estudiantes(filtro_nombre, filtro_equipo), row[0], row[1], row[2], estudiante_id, "Actualizar"
 
-@callback(
-    Output("tabla-estudiantes", "children"),
-    Input("tabla-estudiantes", "id"),
-    prevent_initial_call=False
-)
-def cargar_estudiantes(_):
-    """Fetches and displays the list of students from the database."""
+    # --- Registrar o Actualizar ---
+    if ctx.triggered_id == "btn-registrar":
+        if not nombre or not edad or not equipo:
+            conn.close()
+            return "Por favor complete todos los campos.", mostrar_estudiantes(filtro_nombre, filtro_equipo), nombre, edad, equipo, estudiante_id, modo
+
+        if estudiante_id:
+            cursor.execute("UPDATE estudiantes SET nombre = %s, edad = %s, equipo = %s WHERE id = %s",
+                           (nombre.strip(), edad, equipo, estudiante_id))
+            mensaje = "Estudiante actualizado correctamente."
+        else:
+            cursor.execute("INSERT INTO estudiantes (nombre, edad, equipo) VALUES (%s, %s, %s)",
+                           (nombre.strip(), edad, equipo))
+            mensaje = f"Estudiante '{nombre}' registrado exitosamente."
+
+        conn.commit()
+        conn.close()
+        return mensaje, mostrar_estudiantes(filtro_nombre, filtro_equipo), "", None, None, None, "Registrar"
+
+    # --- Filtros (nombre y equipo) ---
+    conn.close()
+    return "", mostrar_estudiantes(filtro_nombre, filtro_equipo), nombre, edad, equipo, estudiante_id, "Registrar"
+
+# Mostrar estudiantes con filtros
+def mostrar_estudiantes(filtro_nombre=None, filtro_equipo=None):
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    try:
-        cursor.execute("SELECT id, nombre, equipo FROM estudiantes ORDER BY nombre")
-        estudiantes = cursor.fetchall()
+    query = "SELECT id, nombre, edad, equipo FROM estudiantes WHERE 1=1"
+    params = []
 
-        # Build the students' table
-        if not estudiantes:
-            return html.P("No hay estudiantes registrados.")
+    if filtro_nombre:
+        query += " AND nombre LIKE %s"
+        params.append(f"%{filtro_nombre}%")
 
-        tabla = dbc.Table([
-            html.Thead(html.Tr([html.Th("ID"), html.Th("Nombre"), html.Th("Equipo")])),
-            html.Tbody([
-                html.Tr([html.Td(e[0]), html.Td(e[1]), html.Td(e[2])]) for e in estudiantes
+    if filtro_equipo:
+        query += " AND equipo = %s"
+        params.append(filtro_equipo)
+
+    query += " ORDER BY nombre"
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+    conn.close()
+
+    if not rows:
+        return html.P("No hay estudiantes registrados aún.")
+
+    header = html.Thead(html.Tr([
+        html.Th("Nombre"), html.Th("Edad"), html.Th("Equipo"), html.Th("Acciones")
+    ]))
+
+    body = html.Tbody([
+        html.Tr([
+            html.Td(r[1]),
+            html.Td(r[2]),
+            html.Td(r[3]),
+            html.Td([
+                dbc.Button("Editar", id={"type": "btn-editar", "index": r[0]}, size="sm", color="warning", className="me-1"),
+                dbc.Button("Eliminar", id={"type": "btn-eliminar", "index": r[0]}, size="sm", color="danger")
             ])
-        ], bordered=True, hover=True, responsive=True)
+        ]) for r in rows
+    ])
 
-        return tabla
-
-    finally:
-        # Always close the database connection
-        conn.close()
+    return dbc.Table([header, body], bordered=True, hover=True, responsive=True, striped=True)

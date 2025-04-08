@@ -9,37 +9,36 @@ dash.register_page(__name__, path="/memorizacion")
 DATABASE_URL = "postgres://uehj6l5ro2do7e:pec2874786543ef60ab195635730a2b11bd85022c850ca40f1cda985eef6374fd@c952v5ogavqpah.cluster-czrs8kj4isg7.us-east-1.rds.amazonaws.com:5432/d8bh6a744djnub"
 
 DIAS = ["Día 1", "Día 2", "Día 3", "Día 4", "Día 5"]
-
 layout = dbc.Container([
-    html.H2("Gestión de Memorización", className="my-4"),
+    html.H2("Registro de Memorización", className="my-4"),
 
     dbc.Row([
+        dbc.Col([
+            dbc.Label("Equipo"),
+            dcc.Dropdown(id="equipo-mem", placeholder="Seleccione un equipo")
+        ], md=4),
         dbc.Col([
             dbc.Label("Estudiante"),
             dcc.Dropdown(id="estudiante-mem", placeholder="Seleccione un estudiante")
-        ], md=6),
-    ], className="mb-4"),
-
-    dbc.Row([
+        ], md=4),
         dbc.Col([
-            dbc.Label("Tipo de Cita"),
-            dcc.Dropdown(id="tipo-cita-mem", placeholder="Seleccione un tipo de cita")
-        ], md=6),
-    ], className="mb-4"),
+            dbc.Label("Tipo"),
+            dcc.Dropdown(
+                id="tipo-cita-mem",
+                options=[
+                    {"label": "Versículo", "value": "Versículo"},
+                    {"label": "Capítulo", "value": "Capítulo"}
+                ],
+                placeholder="Seleccione tipo"
+            )
+        ], md=4)
+    ], className="mb-3"),
 
-    dbc.Row([
-        dbc.Col([
-            dbc.Label("Citas"),
-            dcc.Dropdown(id="dropdown-citas", multi=True, placeholder="Seleccione las citas completadas")
-        ], md=6),
-    ], className="mb-4"),
-
-    dbc.Button("Guardar Memorización", id="btn-guardar-mem", color="primary", className="mt-3"),
-
-    html.Div(id="mensaje-mem", className="text-success mt-2"),
-    html.Div(id="tabla-citas-completadas", className="mt-4")
+    html.Div(id="seccion-citas-mem"),
+    html.Div(id="mensaje-mem", className="text-success mt-3"),
+    html.Hr(),
+    html.Div(id="tabla-citas-completadas")
 ])
-
 
 # Helper function to get a database connection
 def get_db_connection():
