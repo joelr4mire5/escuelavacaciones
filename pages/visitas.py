@@ -1,11 +1,14 @@
 import dash
+
 dash.register_page(__name__, path="/visitas")
 
 from dash import html, dcc, Input, Output, State, ctx, callback
 import dash_bootstrap_components as dbc
-import sqlite3
-from database import DB_PATH
+import psycopg2
 import datetime
+
+# Heroku PostgreSQL connection URL
+DATABASE_URL = "postgres://uehj6l5ro2do7e:pec2874786543ef60ab195635730a2b11bd85022c850ca40f1cda985eef6374fd@c952v5ogavqpah.cluster-czrs8kj4isg7.us-east-1.rds.amazonaws.com:5432/d8bh6a744djnub"
 
 layout = dbc.Container([
     html.H2("Registro de Visitas", className="my-4"),
@@ -47,18 +50,26 @@ layout = dbc.Container([
     html.Div(id="tabla-visitas")
 ])
 
+
+# Helper function to establish a PostgreSQL database connection
+def get_db_connection():
+    """Establishes and returns a PostgreSQL database connection."""
+    return psycopg2.connect(DATABASE_URL, sslmode='require')
+
+
 # Cargar equipos
 @callback(
     Output("dropdown-equipo-visita", "options"),
     Input("dropdown-equipo-visita", "id")
 )
 def cargar_equipos(_):
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT DISTINCT equipo FROM estudiantes ORDER BY equipo")
     equipos = cursor.fetchall()
     conn.close()
     return [{"label": e[0], "value": e[0]} for e in equipos]
+
 
 # Cargar estudiantes según equipo seleccionado
 @callback(
@@ -68,12 +79,13 @@ def cargar_equipos(_):
 def filtrar_estudiantes_por_equipo(equipo):
     if not equipo:
         return []
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, nombre FROM estudiantes WHERE equipo = ? ORDER BY nombre", (equipo,))
+    cursor.execute("SELECT id, nombre FROM estudiantes WHERE equipo = %s ORDER BY nombre", (equipo,))
     estudiantes = cursor.fetchall()
     conn.close()
     return [{"label": nombre, "value": id_} for id_, nombre in estudiantes]
+
 
 # Manejar crear, editar y eliminar
 @callback(
@@ -95,52 +107,64 @@ def filtrar_estudiantes_por_equipo(equipo):
 )
 def manejar_visita(n_reg, editar_clicks, eliminar_clicks, nombre, adulto_valor, invitador_id, visita_id):
     triggered_id = ctx.triggered_id
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     cursor = conn.cursor()
 
-    if isinstance(triggered_id, dict) and triggered_id.get("type") == "btn-eliminar-visita":
-        visita_id = triggered_id["index"]
-        cursor.execute("DELETE FROM visitas WHERE id = ?", (visita_id,))
+    try:
+        # Eliminar visita
+        if isinstance(triggered_id, dict) and triggered_id.get("type") == "btn-eliminar-visita":
+            visita_id = triggered_id["index"]
+            cursor.execute("DELETE FROM visitas WHERE id = %s", (visita_id,))
+            conn.commit()
+            return "Visita eliminada correctamente.", mostrar_visitas(cursor), "", [], None, None, "Registrar"
+
+        # Editar visita (cargar datos)
+        if isinstance(triggered_id, dict) and triggered_id.get("type") == "btn-editar-visita":
+            visita_id = triggered_id["index"]
+            cursor.execute("SELECT nombre, es_adulto, invitador_id FROM visitas WHERE id = %s", (visita_id,))
+            row = cursor.fetchone()
+            return "", mostrar_visitas(cursor), row[0], ["adulto"] if row[1] else [], row[2], visita_id, "Actualizar"
+
+        # Validar input
+        if not nombre or not invitador_id:
+            return "Debe ingresar nombre e invitador.", mostrar_visitas(
+                cursor), nombre, adulto_valor, invitador_id, visita_id, "Registrar"
+
+        # Determinar si es adulto
+        es_adulto = 1 if "adulto" in adulto_valor else 0
+        puntaje = 6 if es_adulto else 4
+
+        # Actualizar o Insertar
+        if visita_id:
+            cursor.execute("""
+                UPDATE visitas
+                SET nombre = %s, es_adulto = %s, invitador_id = %s, puntaje = %s
+                WHERE id = %s
+            """, (nombre.strip(), es_adulto, invitador_id, puntaje, visita_id))
+            mensaje = "Visita actualizada correctamente."
+        else:
+            cursor.execute("""
+                INSERT INTO visitas (nombre, es_adulto, invitador_id, puntaje)
+                VALUES (%s, %s, %s, %s)
+            """, (nombre.strip(), es_adulto, invitador_id, puntaje))
+            mensaje = "Visita registrada correctamente."
+
         conn.commit()
+        return mensaje, mostrar_visitas(cursor), "", [], None, None, "Registrar"
+
+    finally:
         conn.close()
-        return "Visita eliminada correctamente.", mostrar_visitas(), "", [], None, None, "Registrar"
 
-    if isinstance(triggered_id, dict) and triggered_id.get("type") == "btn-editar-visita":
-        visita_id = triggered_id["index"]
-        cursor.execute("SELECT nombre, es_adulto, invitador_id FROM visitas WHERE id = ?", (visita_id,))
-        row = cursor.fetchone()
-        conn.close()
-        return "", mostrar_visitas(), row[0], ["adulto"] if row[1] else [], row[2], visita_id, "Actualizar"
-
-    if not nombre or not invitador_id:
-        conn.close()
-        return "Debe ingresar nombre e invitador.", mostrar_visitas(), nombre, adulto_valor, invitador_id, visita_id, "Registrar"
-
-    es_adulto = 1 if "adulto" in adulto_valor else 0
-    puntaje = 6 if es_adulto else 4
-
-    if visita_id:
-        cursor.execute("""
-            UPDATE visitas
-            SET nombre = ?, es_adulto = ?, invitador_id = ?, puntaje = ?
-            WHERE id = ?
-        """, (nombre.strip(), es_adulto, invitador_id, puntaje, visita_id))
-        mensaje = "Visita actualizada correctamente."
-    else:
-        cursor.execute("""
-            INSERT INTO visitas (nombre, es_adulto, invitador_id, puntaje)
-            VALUES (?, ?, ?, ?)
-        """, (nombre.strip(), es_adulto, invitador_id, puntaje))
-        mensaje = "Visita registrada correctamente."
-
-    conn.commit()
-    conn.close()
-    return mensaje, mostrar_visitas(), "", [], None, None, "Registrar"
 
 # Tabla de visitas registradas
-def mostrar_visitas():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+def mostrar_visitas(cursor=None):
+    if cursor is None:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        close_conn = True
+    else:
+        close_conn = False
+
     cursor.execute("""
         SELECT v.id, v.nombre, v.es_adulto, v.puntaje, e.nombre
         FROM visitas v
@@ -148,7 +172,9 @@ def mostrar_visitas():
         ORDER BY v.nombre
     """)
     rows = cursor.fetchall()
-    conn.close()
+
+    if close_conn:
+        conn.close()
 
     if not rows:
         return html.P("No hay visitas registradas.")
@@ -163,7 +189,8 @@ def mostrar_visitas():
             html.Td(r[4]),
             html.Td(r[3]),
             html.Td([
-                dbc.Button("Editar", id={"type": "btn-editar-visita", "index": r[0]}, size="sm", color="warning", className="me-1"),
+                dbc.Button("Editar", id={"type": "btn-editar-visita", "index": r[0]}, size="sm", color="warning",
+                           className="me-1"),
                 dbc.Button("Eliminar", id={"type": "btn-eliminar-visita", "index": r[0]}, size="sm", color="danger")
             ])
         ]) for r in rows

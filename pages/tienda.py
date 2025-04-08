@@ -1,84 +1,135 @@
-# pages/tienda.py
-
 import dash
+import psycopg2  # For PostgreSQL connection
+import pandas as pd  # For working with SQL query results
+from dash import html, Input, Output, State, callback, ctx, dcc
+import dash_bootstrap_components as dbc
+
 dash.register_page(__name__, path="/tienda")
 
-from dash import html, dcc, Input, Output, State, callback, ctx
-import dash_bootstrap_components as dbc
-import sqlite3
-import pandas as pd
-from database import DB_PATH
+# Connection URL for Heroku PostgreSQL
+DATABASE_URL = "postgres://uehj6l5ro2do7e:pec2874786543ef60ab195635730a2b11bd85022c850ca40f1cda985eef6374fd@c952v5ogavqpah.cluster-czrs8kj4isg7.us-east-1.rds.amazonaws.com:5432/d8bh6a744djnub"
 
 layout = dbc.Container([
-    html.H2("Tienda de Recompensas", className="my-4"),
-
     dbc.Row([
-        dbc.Col([
-            dbc.Label("Equipo"),
-            dcc.Dropdown(id="filtro-equipo-tienda", placeholder="Seleccione un equipo")
-        ]),
         dbc.Col([
             dbc.Label("Estudiante"),
             dcc.Dropdown(id="dropdown-estudiante-tienda", placeholder="Seleccione un estudiante")
-        ])
-    ], className="mb-3"),
+        ], md=6),
+    ], className="mb-4"),
 
     dbc.Row([
         dbc.Col([
-            dbc.Label("Puntos Disponibles"),
-            html.Div(id="puntos-disponibles", className="lead")
-        ])
-    ]),
+            dbc.Label("Descripción de compra"),
+            dbc.Input(id="input-descripcion", placeholder="Ingrese la descripción de la compra")
+        ], md=6),
+        dbc.Col([
+            dbc.Label("Puntos a usar"),
+            dbc.Input(id="input-puntos", type="number", placeholder="Ingrese los puntos a gastar")
+        ], md=3),
+    ], className="mb-4"),
+
+    dbc.Button("Registrar", id="btn-comprar", color="primary", className="mt-3"),
+
+    dbc.Alert(id="mensaje-compra", is_open=False, duration=4000, className="mt-3"),
+
+    html.Div(id="puntos-disponibles", className="text-center mt-3 text-primary fw-bold"),
 
     html.Hr(),
+    html.Div(id="tabla-compras", className="mt-4"),
 
-    dbc.Row([
-        dbc.Col([
-            dbc.Label("Descripción del Artículo"),
-            dbc.Input(id="input-descripcion", type="text", placeholder="Ej: Pelota")
-        ]),
-        dbc.Col([
-            dbc.Label("Puntos a Descontar"),
-            dbc.Input(id="input-puntos", type="number", min=1)
-        ])
-    ], className="mb-3"),
-
-    dcc.Store(id="transaccion-id", storage_type="session"),
-
-    dbc.Button("Registrar Compra", id="btn-comprar", color="primary", className="mb-3"),
-    html.Div(id="mensaje-compra", className="mb-3"),
-
-    html.Hr(),
-
-    html.H4("Historial de Compras"),
-    html.Div(id="tabla-compras")
+    dcc.Store(id="transaccion-id"),
 ])
 
-@callback(
-    Output("filtro-equipo-tienda", "options"),
-    Input("filtro-equipo-tienda", "id")
-)
-def cargar_equipos(_):
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("SELECT DISTINCT equipo FROM estudiantes ORDER BY equipo")
-    equipos = cursor.fetchall()
-    conn.close()
-    return [{"label": e[0], "value": e[0]} for e in equipos]
 
-@callback(
-    Output("dropdown-estudiante-tienda", "options"),
-    Input("filtro-equipo-tienda", "value")
-)
-def filtrar_estudiantes(equipo):
-    if not equipo:
-        return []
-    conn = sqlite3.connect(DB_PATH)
+# Helper function to get a database connection
+def get_db_connection():
+    """Establishes a connection to the PostgreSQL database."""
+    return psycopg2.connect(DATABASE_URL, sslmode="require")
+
+
+def calcular_disponibles(estudiante_id):
+    """Calculate the available points for a student."""
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, nombre FROM estudiantes WHERE equipo = ? ORDER BY nombre", (equipo,))
-    rows = cursor.fetchall()
-    conn.close()
-    return [{"label": r[1], "value": r[0]} for r in rows]
+    try:
+        cursor.execute("""
+            WITH resumen_puntaje AS (
+                SELECT estudiante_id, SUM(puntaje) AS total_puntos
+                FROM (
+                    SELECT e.id AS estudiante_id,
+                           (a.puntaje_asistencia + a.puntaje_puntual) AS puntaje
+                    FROM asistencia a
+                    JOIN estudiantes e ON e.id = a.estudiante_id
+                    UNION ALL
+                    SELECT e.id AS estudiante_id,
+                           (m.puntos_biblia + m.puntos_folder + m.puntos_completo) AS puntaje
+                    FROM materiales m
+                    JOIN estudiantes e ON e.id = m.estudiante_id
+                    UNION ALL
+                    SELECT e.id AS estudiante_id,
+                           v.puntaje
+                    FROM visitas v
+                    JOIN estudiantes e ON e.id = v.invitador_id
+                    UNION ALL
+                    SELECT e.id AS estudiante_id,
+                           c.puntaje
+                    FROM citas_completadas cc
+                    JOIN citas c ON c.id = cc.cita_id
+                    JOIN estudiantes e ON e.id = cc.estudiante_id
+                ) AS puntos
+                GROUP BY estudiante_id
+            )
+            SELECT COALESCE(r.total_puntos, 0) - COALESCE(c.sum_gastado, 0) AS puntos_disponibles
+            FROM resumen_puntaje r
+            LEFT JOIN (
+                SELECT estudiante_id, SUM(puntos_gastados) AS sum_gastado
+                FROM compras
+                GROUP BY estudiante_id
+            ) c ON r.estudiante_id = c.estudiante_id
+            WHERE r.estudiante_id = %s
+        """, (estudiante_id,))
+        result = cursor.fetchone()
+        return result[0] if result else 0
+    finally:
+        conn.close()
+
+
+def mostrar_tabla_compras(estudiante_id):
+    """Display the table of purchases for a specific student."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT id, descripcion, puntos_gastados
+            FROM compras
+            WHERE estudiante_id = %s
+            ORDER BY id
+        """, (estudiante_id,))
+        compras = cursor.fetchall()
+        if not compras:
+            return html.P("No hay compras registradas.")
+
+        table = dbc.Table([
+            html.Thead(html.Tr([html.Th("ID"), html.Th("Descripción"), html.Th("Puntos"), html.Th("Acciones")])),
+            html.Tbody([
+                html.Tr([
+                    html.Td(compra[0]),
+                    html.Td(compra[1]),
+                    html.Td(compra[2]),
+                    html.Td([
+                        dbc.Button("Editar", id={"type": "btn-editar-compra", "index": compra[0]}, size="sm",
+                                   className="me-1"),
+                        dbc.Button("Eliminar", id={"type": "btn-eliminar-compra", "index": compra[0]}, size="sm",
+                                   color="danger")
+                    ])
+                ]) for compra in compras
+            ])
+        ], bordered=True, hover=True, responsive=True)
+
+        return table
+    finally:
+        conn.close()
+
 
 @callback(
     Output("tabla-compras", "children"),
@@ -102,147 +153,50 @@ def manejar_compras(estudiante_id, n_comprar, editar_clicks, eliminar_clicks, de
         return "", "", "", None, None, None, "Registrar"
 
     triggered_id = ctx.triggered_id
-    mensaje = ""
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     cursor = conn.cursor()
+    mensaje = ""
 
-    cursor.executescript("""
-        CREATE TEMP VIEW IF NOT EXISTS resumen_puntaje AS
-        SELECT e.id, e.nombre, e.equipo,
-               (a.puntaje_asistencia + a.puntaje_puntual) AS puntaje,
-               'Asistencia' AS categoria
-        FROM asistencia a
-        JOIN estudiantes e ON e.id = a.estudiante_id
-        UNION ALL
-        SELECT e.id, e.nombre, e.equipo,
-               (m.puntos_biblia + m.puntos_folder + m.puntos_completo) AS puntaje,
-               'Materiales' AS categoria
-        FROM materiales m
-        JOIN estudiantes e ON e.id = m.estudiante_id
-        UNION ALL
-        SELECT e.id, e.nombre, e.equipo,
-               v.puntaje,
-               'Visitas' AS categoria
-        FROM visitas v
-        JOIN estudiantes e ON e.id = v.invitador_id
-        UNION ALL
-        SELECT e.id, e.nombre, e.equipo,
-               c.puntaje,
-               'Memorización' AS categoria
-        FROM citas_completadas cc
-        JOIN citas c ON c.id = cc.cita_id
-        JOIN estudiantes e ON e.id = cc.estudiante_id;
-    """)
+    try:
+        if isinstance(triggered_id, dict) and triggered_id["type"] == "btn-eliminar-compra":
+            compra_id = triggered_id["index"]
+            cursor.execute("DELETE FROM compras WHERE id = %s", (compra_id,))
+            conn.commit()
+            mensaje = dbc.Alert("Compra eliminada.", color="info")
 
-    def calcular_disponibles():
-        df = pd.read_sql_query("SELECT SUM(puntaje) AS total FROM resumen_puntaje WHERE id = ?", conn, params=(estudiante_id,))
-        total = df["total"].iloc[0] if not df.empty and df["total"].iloc[0] else 0
-        cursor.execute("SELECT COALESCE(SUM(puntos_gastados), 0) FROM compras WHERE estudiante_id = ?", (estudiante_id,))
-        gastado = cursor.fetchone()[0]
-        return total - gastado
+        elif isinstance(triggered_id, dict) and triggered_id["type"] == "btn-editar-compra":
+            compra_id = triggered_id["index"]
+            cursor.execute("SELECT descripcion, puntos_gastados FROM compras WHERE id = %s", (compra_id,))
+            row = cursor.fetchone()
+            return mostrar_tabla_compras(
+                estudiante_id), "", f"{calcular_disponibles(estudiante_id)} puntos disponibles", \
+                row[0], row[1], compra_id, "Actualizar"
 
-    disponibles = calcular_disponibles()
+        elif triggered_id == "btn-comprar":
+            if not descripcion or puntos is None:
+                return mostrar_tabla_compras(estudiante_id), dbc.Alert("Complete todos los campos.", color="warning"), \
+                    f"{calcular_disponibles(estudiante_id)} puntos disponibles", descripcion, puntos, compra_id, \
+                    "Registrar"
 
-    if isinstance(triggered_id, dict) and triggered_id["type"] == "btn-eliminar-compra":
-        compra_id = triggered_id["index"]
-        cursor.execute("DELETE FROM compras WHERE id = ?", (compra_id,))
-        conn.commit()
-        nuevos_disponibles = calcular_disponibles()
+            disponibles = calcular_disponibles(estudiante_id)
+            if puntos > disponibles and not compra_id:
+                return mostrar_tabla_compras(estudiante_id), dbc.Alert("Puntos insuficientes.", color="danger"), \
+                    f"{disponibles} puntos disponibles", descripcion, puntos, compra_id, "Registrar"
+
+            if compra_id:
+                cursor.execute("UPDATE compras SET descripcion = %s, puntos_gastados = %s WHERE id = %s",
+                               (descripcion.strip(), puntos, compra_id))
+                mensaje = dbc.Alert("Compra actualizada correctamente.", color="success")
+            else:
+                cursor.execute("INSERT INTO compras (estudiante_id, descripcion, puntos_gastados) VALUES (%s, %s, %s)",
+                               (estudiante_id, descripcion.strip(), puntos))
+                mensaje = dbc.Alert("Compra registrada correctamente.", color="success")
+
+            conn.commit()
+
+        nuevos_disponibles = calcular_disponibles(estudiante_id)
+        return mostrar_tabla_compras(
+            estudiante_id), mensaje, f"{nuevos_disponibles} puntos disponibles", "", None, None, "Registrar"
+
+    finally:
         conn.close()
-        return (
-            mostrar_tabla_compras(estudiante_id),
-            dbc.Alert("Compra eliminada.", color="info"),
-            f"{nuevos_disponibles} puntos disponibles",
-            "", None, None, "Registrar"
-        )
-
-    if isinstance(triggered_id, dict) and triggered_id["type"] == "btn-editar-compra":
-        compra_id = triggered_id["index"]
-        cursor.execute("SELECT descripcion, puntos_gastados FROM compras WHERE id = ?", (compra_id,))
-        row = cursor.fetchone()
-        conn.close()
-        return (
-            mostrar_tabla_compras(estudiante_id),
-            "",
-            f"{disponibles} puntos disponibles",
-            row[0], row[1], compra_id, "Actualizar"
-        )
-
-    if triggered_id == "btn-comprar":
-        if not descripcion or puntos is None:
-            mensaje = dbc.Alert("Complete todos los campos", color="warning")
-            nuevos_disponibles = calcular_disponibles()
-            conn.close()
-            return (
-                mostrar_tabla_compras(estudiante_id),
-                mensaje,
-                f"{nuevos_disponibles} puntos disponibles",
-                descripcion, puntos, compra_id, "Registrar"
-            )
-
-        if puntos > disponibles and not compra_id:
-            mensaje = dbc.Alert("Puntos insuficientes", color="danger")
-            nuevos_disponibles = calcular_disponibles()
-            conn.close()
-            return (
-                mostrar_tabla_compras(estudiante_id),
-                mensaje,
-                f"{nuevos_disponibles} puntos disponibles",
-                descripcion, puntos, compra_id, "Registrar"
-            )
-
-        if compra_id:
-            cursor.execute("UPDATE compras SET descripcion = ?, puntos_gastados = ? WHERE id = ?",
-                           (descripcion.strip(), puntos, compra_id))
-            mensaje = dbc.Alert("Compra actualizada correctamente.", color="success")
-        else:
-            cursor.execute("INSERT INTO compras (estudiante_id, descripcion, puntos_gastados) VALUES (?, ?, ?)",
-                           (estudiante_id, descripcion.strip(), puntos))
-            mensaje = dbc.Alert("Compra registrada correctamente.", color="success")
-
-        conn.commit()
-        nuevos_disponibles = calcular_disponibles()
-        conn.close()
-        return (
-            mostrar_tabla_compras(estudiante_id),
-            mensaje,
-            f"{nuevos_disponibles} puntos disponibles",
-            "", None, None, "Registrar"
-        )
-
-    # 🔒 Return por defecto para evitar errores de tipo
-    conn.close()
-    return (
-        mostrar_tabla_compras(estudiante_id),
-        mensaje,
-        f"{disponibles} puntos disponibles",
-        descripcion,
-        puntos,
-        compra_id,
-        "Registrar"
-    )
-
-def mostrar_tabla_compras(estudiante_id):
-    conn = sqlite3.connect(DB_PATH)
-    df = pd.read_sql_query(
-        "SELECT id, descripcion, puntos_gastados, fecha FROM compras WHERE estudiante_id = ? ORDER BY fecha DESC",
-        conn, params=(estudiante_id,))
-    conn.close()
-
-    if df.empty:
-        return html.P("Este estudiante no ha realizado compras.")
-
-    return dbc.Table([
-        html.Thead(html.Tr([html.Th("Artículo"), html.Th("Puntos"), html.Th("Fecha"), html.Th("Acciones")])),
-        html.Tbody([
-            html.Tr([
-                html.Td(row["descripcion"]),
-                html.Td(row["puntos_gastados"]),
-                html.Td(row["fecha"]),
-                html.Td([
-                    dbc.Button("Editar", id={"type": "btn-editar-compra", "index": row["id"]}, size="sm", color="warning", className="me-1"),
-                    dbc.Button("Eliminar", id={"type": "btn-eliminar-compra", "index": row["id"]}, size="sm", color="danger")
-                ])
-            ]) for _, row in df.iterrows()
-        ])
-    ], bordered=True, hover=True, responsive=True, striped=True)

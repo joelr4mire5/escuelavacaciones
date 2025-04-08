@@ -1,104 +1,101 @@
-# pages/memorizacion.py
-
 import dash
-import sqlite3
+import psycopg2  # PostgreSQL library
 from dash import html, dcc, Input, Output, State, callback
 import dash_bootstrap_components as dbc
-from database import DB_PATH
-import datetime
-
 
 dash.register_page(__name__, path="/memorizacion")
 
+# Connection string for Heroku PostgreSQL
+DATABASE_URL = "postgres://uehj6l5ro2do7e:pec2874786543ef60ab195635730a2b11bd85022c850ca40f1cda985eef6374fd@c952v5ogavqpah.cluster-czrs8kj4isg7.us-east-1.rds.amazonaws.com:5432/d8bh6a744djnub"
+
+DIAS = ["Día 1", "Día 2", "Día 3", "Día 4", "Día 5"]
+
 layout = dbc.Container([
-    html.H2("Registro de Memorización", className="my-4"),
+    html.H2("Gestión de Memorización", className="my-4"),
 
     dbc.Row([
         dbc.Col([
-            dbc.Label("Equipo"),
-            dcc.Dropdown(id="equipo-mem", placeholder="Seleccione un equipo")
-        ], md=4),
-        dbc.Col([
             dbc.Label("Estudiante"),
             dcc.Dropdown(id="estudiante-mem", placeholder="Seleccione un estudiante")
-        ], md=4),
-        dbc.Col([
-            dbc.Label("Tipo"),
-            dcc.Dropdown(
-                id="tipo-cita-mem",
-                options=[
-                    {"label": "Versículo", "value": "Versículo"},
-                    {"label": "Capítulo", "value": "Capítulo"}
-                ],
-                placeholder="Seleccione tipo"
-            )
-        ], md=4)
-    ], className="mb-3"),
+        ], md=6),
+    ], className="mb-4"),
 
-    html.Div(id="seccion-citas-mem"),
-    html.Div(id="mensaje-mem", className="text-success mt-3"),
-    html.Hr(),
-    html.Div(id="tabla-citas-completadas")
+    dbc.Row([
+        dbc.Col([
+            dbc.Label("Tipo de Cita"),
+            dcc.Dropdown(id="tipo-cita-mem", placeholder="Seleccione un tipo de cita")
+        ], md=6),
+    ], className="mb-4"),
+
+    dbc.Row([
+        dbc.Col([
+            dbc.Label("Citas"),
+            dcc.Dropdown(id="dropdown-citas", multi=True, placeholder="Seleccione las citas completadas")
+        ], md=6),
+    ], className="mb-4"),
+
+    dbc.Button("Guardar Memorización", id="btn-guardar-mem", color="primary", className="mt-3"),
+
+    html.Div(id="mensaje-mem", className="text-success mt-2"),
+    html.Div(id="tabla-citas-completadas", className="mt-4")
 ])
 
-@callback(
-    Output("equipo-mem", "options"),
-    Input("equipo-mem", "id")
-)
-def cargar_equipos(_):
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("SELECT DISTINCT equipo FROM estudiantes ORDER BY equipo")
-    equipos = cursor.fetchall()
-    conn.close()
-    return [{"label": e[0], "value": e[0]} for e in equipos]
+
+# Helper function to get a database connection
+def get_db_connection():
+    return psycopg2.connect(DATABASE_URL, sslmode='require')
+
 
 @callback(
     Output("estudiante-mem", "options"),
-    Input("equipo-mem", "value")
+    Input("estudiante-mem", "id")
 )
-def cargar_estudiantes(equipo):
-    if not equipo:
-        return []
-    conn = sqlite3.connect(DB_PATH)
+def cargar_estudiantes(_):
+    """Load the list of students from the database."""
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, nombre FROM estudiantes WHERE equipo = ? ORDER BY nombre", (equipo,))
-    estudiantes = cursor.fetchall()
-    conn.close()
-    return [{"label": nombre, "value": id_} for id_, nombre in estudiantes]
+    try:
+        cursor.execute("SELECT id, nombre FROM estudiantes ORDER BY nombre")
+        estudiantes = cursor.fetchall()
+        return [{"label": nombre, "value": id_} for id_, nombre in estudiantes]
+    finally:
+        conn.close()
+
 
 @callback(
-    Output("seccion-citas-mem", "children"),
-    Input("estudiante-mem", "value"),
+    Output("tipo-cita-mem", "options"),
+    Input("tipo-cita-mem", "id")
+)
+def cargar_tipos_cita(_):
+    """Load the list of available cita types."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT DISTINCT tipo FROM citas ORDER BY tipo")
+        tipos = cursor.fetchall()
+        return [{"label": tipo[0], "value": tipo[0]} for tipo in tipos]
+    finally:
+        conn.close()
+
+
+@callback(
+    Output("dropdown-citas", "options"),
     Input("tipo-cita-mem", "value")
 )
-def mostrar_citas(estudiante_id, tipo):
-    if not estudiante_id or not tipo:
-        return ""
+def cargar_citas_por_tipo(tipo):
+    """Load the citas by their type."""
+    if not tipo:
+        return []
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT id, cita FROM citas WHERE tipo = %s ORDER BY cita", (tipo,))
+        citas = cursor.fetchall()
+        return [{"label": cita[1], "value": cita[0]} for cita in citas]
+    finally:
+        conn.close()
 
-    cursor.execute("SELECT id, cita, puntaje FROM citas WHERE tipo = ?", (tipo,))
-    citas = cursor.fetchall()
-
-    cursor.execute("SELECT cita_id FROM citas_completadas WHERE estudiante_id = ?", (estudiante_id,))
-    completados = set(row[0] for row in cursor.fetchall())
-    conn.close()
-
-    dropdown = dcc.Dropdown(
-        id="dropdown-citas",
-        options=[{"label": f"{cita} ({pts} pts)", "value": id_} for id_, cita, pts in citas],
-        value=[id_ for id_, cita, pts in citas if id_ in completados],
-        multi=True,
-        placeholder="Seleccione una o más citas"
-    )
-
-    return html.Div([
-        html.Label("Citas disponibles"),
-        dropdown,
-        dbc.Button("Guardar", id="btn-guardar-mem", color="primary", className="mt-2")
-    ])
 
 @callback(
     Output("mensaje-mem", "children"),
@@ -110,48 +107,66 @@ def mostrar_citas(estudiante_id, tipo):
     prevent_initial_call=True
 )
 def guardar_memorizacion(n, estudiante_id, seleccionados, tipo):
-    conn = sqlite3.connect(DB_PATH)
+    """Save or update student's completed citas."""
+    conn = get_db_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT id FROM citas WHERE tipo = ?", (tipo,))
-    todos = [row[0] for row in cursor.fetchall()]
+    try:
+        # Get all cita IDs for the selected type
+        cursor.execute("SELECT id FROM citas WHERE tipo = %s", (tipo,))
+        todos = [row[0] for row in cursor.fetchall()]
 
-    for cita_id in todos:
-        if cita_id in seleccionados:
-            cursor.execute("SELECT COUNT(*) FROM citas_completadas WHERE estudiante_id = ? AND cita_id = ?", (estudiante_id, cita_id))
-            exists = cursor.fetchone()[0]
-            if exists:
-                continue
-            cursor.execute("""
-                INSERT INTO citas_completadas (estudiante_id, cita_id, completado)
-                VALUES (?, ?, 1)
-            """, (estudiante_id, cita_id))
+        # Insert or delete cita records for the student based on selection
+        for cita_id in todos:
+            if cita_id in seleccionados:
+                # Check if the record already exists in `citas_completadas`
+                cursor.execute(
+                    "SELECT COUNT(*) FROM citas_completadas WHERE estudiante_id = %s AND cita_id = %s",
+                    (estudiante_id, cita_id)
+                )
+                exists = cursor.fetchone()[0]
+                if exists:
+                    continue  # Skip if already exists
+                cursor.execute("""
+                    INSERT INTO citas_completadas (estudiante_id, cita_id, completado)
+                    VALUES (%s, %s, 1)
+                """, (estudiante_id, cita_id))
+            else:
+                # Remove from `citas_completadas` if not selected
+                cursor.execute(
+                    "DELETE FROM citas_completadas WHERE estudiante_id = %s AND cita_id = %s",
+                    (estudiante_id, cita_id)
+                )
+
+        # Commit the changes
+        conn.commit()
+
+        # Fetch updated completed citas
+        cursor.execute("""
+            SELECT c.tipo, c.cita, c.puntaje
+            FROM citas_completadas cc
+            JOIN citas c ON cc.cita_id = c.id
+            WHERE cc.estudiante_id = %s
+        """, (estudiante_id,))
+        rows = cursor.fetchall()
+
+        # Build the output table
+        if not rows:
+            tabla = html.P("No hay citas completadas.")
         else:
-            cursor.execute("DELETE FROM citas_completadas WHERE estudiante_id = ? AND cita_id = ?", (estudiante_id, cita_id))
+            total = sum(r[2] for r in rows)  # Sum up the puntajes
+            tabla = html.Div([
+                dbc.Table([
+                    html.Thead(html.Tr([html.Th("Tipo"), html.Th("Cita"), html.Th("Puntaje")])),
+                    html.Tbody([
+                        html.Tr([html.Td(r[0]), html.Td(r[1]), html.Td(r[2])]) for r in rows
+                    ])
+                ], bordered=True, hover=True, responsive=True),
+                html.P(f"Puntaje total: {total} puntos", className="fw-bold mt-2")
+            ])
 
-    conn.commit()
+        return "Citas actualizadas correctamente.", tabla
 
-    cursor.execute("""
-        SELECT c.tipo, c.cita, c.puntaje
-        FROM citas_completadas cc
-        JOIN citas c ON cc.cita_id = c.id
-        WHERE cc.estudiante_id = ?
-    """, (estudiante_id,))
-    rows = cursor.fetchall()
-    conn.close()
-
-    if not rows:
-        tabla = html.P("No hay citas completadas.")
-    else:
-        total = sum(r[2] for r in rows)
-        tabla = html.Div([
-            dbc.Table([
-                html.Thead(html.Tr([html.Th("Tipo"), html.Th("Cita"), html.Th("Puntaje")])),
-                html.Tbody([
-                    html.Tr([html.Td(r[0]), html.Td(r[1]), html.Td(r[2])]) for r in rows
-                ])
-            ], bordered=True, hover=True, responsive=True),
-            html.P(f"Puntaje total: {total} puntos", className="fw-bold mt-2")
-        ])
-
-    return "Citas actualizadas correctamente.", tabla
+    finally:
+        # Close the database connection
+        conn.close()
