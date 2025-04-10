@@ -27,7 +27,7 @@ def init_db():
                 id SERIAL PRIMARY KEY,
                 nombre TEXT NOT NULL,
                 edad INTEGER,
-                equipo TEXT NOT NULL,
+                c TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -111,6 +111,8 @@ def init_db():
             )
         """)
 
+
+
         cursor.execute("""
                    CREATE TABLE IF NOT EXISTS materiales (
                    estudiante_id INTEGER,
@@ -158,6 +160,21 @@ def init_db():
                 FOREIGN KEY(cita_id) REFERENCES citas(id)
             )
         """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS visitas (
+            id SERIAL PRIMARY KEY,
+            nombre TEXT NOT NULL,
+            es_adulto INTEGER DEFAULT 0,
+            invitador_id INTEGER,
+            puntaje INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(invitador_id) REFERENCES estudiantes(id)
+)
+                    """)
+
+
         cursor.execute("""
         DO $$
         BEGIN
