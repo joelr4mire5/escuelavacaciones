@@ -27,7 +27,7 @@ def validate_login(username, password):
             return False
     finally:
         conn.close()
-#
+
 # def create_user_if_not_exists(username, password):
 #     try:
 #         conn = psycopg2.connect(DATABASE_URL, sslmode="require")

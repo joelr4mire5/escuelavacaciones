@@ -27,7 +27,7 @@ def init_db():
                 id SERIAL PRIMARY KEY,
                 nombre TEXT NOT NULL,
                 edad INTEGER,
-                c TEXT NOT NULL,
+                equipo TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )

@@ -98,7 +98,7 @@ def cargar_estudiantes_por_equipo(equipo):
     [Input("estudiante-mem", "value"), Input("tipo-cita-mem", "value")]
 )
 def mostrar_citas(estudiante_id, tipo):
-    """Muestra las citas según la clase del estudiante (determinada por su edad)."""
+    """Muestra las citas disponibles y refleja las memorizadas por el estudiante."""
     if not estudiante_id or not tipo:
         return ""
 
@@ -126,25 +126,37 @@ def mostrar_citas(estudiante_id, tipo):
             clase = "12+"
 
         # Consultar las citas según la clase y el tipo
-        cursor.execute("SELECT id, cita FROM citas WHERE clase = %s AND tipo = %s ORDER BY cita", (clase, tipo))
+        cursor.execute("""
+            SELECT id, cita
+            FROM citas
+            WHERE clase = %s AND tipo = %s
+            ORDER BY cita
+        """, (clase, tipo))
         citas = cursor.fetchall()
 
         if not citas:
             return html.P("No hay citas disponibles para la clase del estudiante.", className="text-warning")
 
+        # Consultar las citas ya completadas por el estudiante
+        cursor.execute("""
+            SELECT cita_id
+            FROM citas_completadas
+            WHERE estudiante_id = %s
+        """, (estudiante_id,))
+        completadas = [id_ for (id_,) in cursor.fetchall()]  # IDs de citas ya completadas
+
         # Opciones de citas para el checklist
         opciones = [{"label": cita, "value": id_} for id_, cita in citas]
 
-        # Componente Checklist para marcar como completadas las citas
+        # Crear el componente Checklist y reflejar las citas completadas
         return dcc.Checklist(
             id="dropdown-citas",
             options=opciones,
-            value=[],  # Aquí se cargarán posibles citas ya completadas del estudiante
+            value=completadas,  # Establecer como seleccionadas las citas memorizadas
             labelStyle={"display": "block"}
         )
     finally:
         conn.close()
-
 
 # Callback para guardar las citas completadas en la base de datos
 @callback(
